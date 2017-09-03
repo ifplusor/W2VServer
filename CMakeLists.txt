@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD 11)
 add_subdirectory(${PROJECT_SOURCE_DIR}/../CxxFramework CxxFramework)
 
 set(HEADER_FILES
-        Vocabulary.hpp VecModel.hpp)
+        types.h ExpTable.hpp Randomizer.hpp Sampler.hpp Vocabulary.hpp
+        Word2VecModel.hpp CBOWModel.hpp SkipGramModel.hpp Word2VecTrainer.hpp)
 
 set(SOURCE_FILES
         main.cpp)

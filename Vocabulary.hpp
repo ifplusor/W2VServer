@@ -2,14 +2,17 @@
 // Created by james on 9/1/17.
 //
 
-#ifndef __W2V_VOCABULARY_H__
-#define __W2V_VOCABULARY_H__
+#ifndef __W2V_VOCABULARY_HPP__
+#define __W2V_VOCABULARY_HPP__
 
 #include <string.h>
+#include <CF/StrPtrLen.h>
+#include "types.h"
+#include "Sampler.hpp"
 
-typedef unsigned long long ull;
+using namespace CF;
 
-class Word {
+class Word : public Countable {
  public:
   static ull GetWordHash(char *word) {
     ull hash = 0;
@@ -17,8 +20,15 @@ class Word {
       hash = hash * 257 + word[a];
     return hash;
   }
+  static ull GetWordHash(StrPtrLen &word) {
+    ull hash = 0;
+    for (size_t a = 0; a < word.Len; a++)
+      hash = hash * 257 + word[a];
+    return hash;
+  }
 
-  Word(char *word) : fWord(nullptr), fLen(0), fCount(0), fHash(0) {
+  Word(char *word)
+      : Countable(), fWord(nullptr), fLen(0), fHash(0) {
     fLen = ::strlen(word);
     fWord = new char[fLen + 1];
     ::strcpy(fWord, word);
@@ -31,22 +41,23 @@ class Word {
 
   ull GetHashCode() { return fHash; }
 
-  char* operator*() { return fWord; }
+  char *operator*() { return fWord; }
+  char operator[](size_t i) { return fWord[i]; }
 
  private:
   char *fWord;
   size_t fLen;
-  size_t fCount;
   ull fHash;
 };
 
-class Vocabulary {
+class Vocabulary : public SampleSet<Word> {
  public:
   enum {
-    kMinVocabSize = 1000
+    kMinVocabSize = 1000,
   };
 
-  Vocabulary() : fWords(nullptr), fLen(0), fSize(kMinVocabSize) {
+  Vocabulary(size_t size = kMinVocabSize)
+      : fWords(nullptr), fLen(0), fSize(size) {
     fWords = new Word *[fSize];
   }
 
@@ -57,21 +68,28 @@ class Vocabulary {
     delete[] fWords;
   }
 
-  void InsertWord(char *word) {
+  /**
+   * @note Vocabulary will manager word's memory.
+   */
+  size_t InsertWord(Word *word) {
     // extern memory
     if (fLen == fSize) {
-      Word **tmp = new Word*[fSize * 2];
-      ::memcpy(tmp, fWords, sizeof(Word*) * fSize);
+      auto tmp = new Word *[fSize * 2];
+      ::memcpy(tmp, fWords, sizeof(Word *) * fSize);
       fSize <<= 1;
     }
-    Word *w = new Word(word);
-    fWords[fLen++] = w;
+    fWords[fLen] = word;
+    return fLen++;
   }
 
-  Word* operator[](size_t index) {
-    if (index < fLen)
-      return fWords[index];
-    return nullptr;
+  size_t InsertWord(char *word) {
+    return InsertWord(new Word(word));
+  }
+
+  size_t GetLength() override { return fLen; }
+
+  Word &operator[](size_t i) override {
+    return *fWords[i];
   }
 
  private:
@@ -80,4 +98,73 @@ class Vocabulary {
   size_t fSize;
 };
 
-#endif //__W2V_VOCABULARY_H__
+class VocabHash {
+ public:
+  enum {
+    kMinBucketSize = 2000,
+  };
+
+  VocabHash(size_t size = kMinBucketSize)
+      : fVocab(), fHashBucket(nullptr), fBucketSize(size) {
+    fVocab.InsertWord("\n");
+    fHashBucket = new size_t[fBucketSize + 1];
+    ::memset(fHashBucket, 0, sizeof(size_t) * (fBucketSize + 1));
+  }
+
+  ~VocabHash() { delete fHashBucket; }
+
+  void InsertWord(char *word) {
+    // extend memory
+    if (fVocab.GetLength() * 1.5 >= fBucketSize) {
+      auto tmp = new size_t[fBucketSize * 2 + 1];
+      fHashBucket = tmp;
+      fBucketSize <<= 1;
+      rebuildHash();
+    }
+
+    size_t idx = Word::GetWordHash(word) % fBucketSize;
+    while (fHashBucket[idx] != 0) {
+      if (::strcmp(word, *fVocab[fHashBucket[idx]]) == 0) return;
+      idx++;
+    };
+    fHashBucket[idx] = fVocab.InsertWord(word);
+  }
+
+  size_t GetLength() { return fVocab.GetLength(); }
+
+  size_t operator[](char *word) {
+    size_t idx = Word::GetWordHash(word) % fBucketSize;
+    while (fHashBucket[idx] != 0) {
+      if (::strcmp(word, *fVocab[fHashBucket[idx]]) == 0)
+        return fHashBucket[idx];
+      idx++;
+    };
+    return 0;
+  }
+
+  size_t operator[](StrPtrLen &word) {
+    size_t idx = Word::GetWordHash(word) % fBucketSize;
+    while (fHashBucket[idx] != 0) {
+      if (word.Equal(*fVocab[fHashBucket[idx]]))
+        return fHashBucket[idx];
+      idx++;
+    };
+    return 0;
+  }
+
+ private:
+  void rebuildHash() {
+    ::memset(fHashBucket, 0, sizeof(size_t) * (fBucketSize + 1));
+    for (size_t i = 1; i < fVocab.GetLength(); i++) {
+      size_t idx = fVocab[i].GetHashCode() % fBucketSize;
+      while (fHashBucket[idx] != 0) idx++;
+      fHashBucket[idx] = i;
+    }
+  }
+
+  Vocabulary fVocab;
+  size_t *fHashBucket; // last element must 0
+  size_t fBucketSize; // equal sizeof(fHashBucket)-1
+};
+
+#endif //__W2V_VOCABULARY_HPP__

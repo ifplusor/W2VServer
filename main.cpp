@@ -3,8 +3,11 @@
 //
 
 #include <CF/CF.h>
+#include "Vocabulary.hpp"
 
 using namespace CF;
+
+void test(StrPtrLen *name);
 
 class MyConfig : public CFConfigure {
  public:
@@ -25,6 +28,9 @@ class MyConfig : public CFConfigure {
     StrPtrLen *content = new StrPtrLen(formatter.GetAsCString(),
                                        formatter.GetCurrentOffset());
     response.SetBody(content);
+
+    test(nullptr);
+
     return CF_NoErr;
   }
 };
@@ -37,4 +43,12 @@ CF_Error CFInit(int argc, char **argv) {
 
 CF_Error CFExit(CF_Error exitCode) {
   return CF_NoErr;
+}
+
+void test(StrPtrLen *name) {
+  Vocabulary *vocab = new Vocabulary();
+  Sampler<Word> *sampler = new Sampler<Word>(*vocab);
+
+  delete sampler;
+  delete vocab;
 }
