@@ -37,6 +37,9 @@ CF_Error CFExit(CF_Error exitCode) {
   return CF_NoErr;
 }
 
+/*
+ * 创建训练器
+ */
 void construct(StrPtrLen *name) {
 
   Ref *ref = sTrainerTable->Resolve(name);
@@ -45,25 +48,32 @@ void construct(StrPtrLen *name) {
     return;
   }
 
-  Vocabulary *vocab = new Vocabulary();
-  Sampler<Word> *sampler = new Sampler<Word>(*vocab);
-
-  VocabHash *vocabHash = new VocabHash();
-
   Word2VecTrainer *trainer = new Word2VecTrainer(name->GetAsCString());
   sTrainerTable->Register(trainer->GetRef());
-
-  delete sampler;
-  delete vocab;
 }
 
+/*
+ * 销毁训练器
+ */
 void destruct(StrPtrLen *name) {
   Ref *ref = sTrainerTable->Resolve(name);
   if (ref != nullptr) {
     sTrainerTable->UnRegister(ref, 1);
+    delete ref->GetObject();
   }
 }
 
+void literate(StrPtrLen *name) {
+  Ref *ref = sTrainerTable->Resolve(name);
+  if (ref != nullptr) {
+    Word2VecTrainer *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
+    trainer->AddVocab();
+  }
+}
+
+/*
+ * 用句子训练模型
+ */
 void feeding(StrPtrLen *name, StrPtrLen &sentence) {
   Ref *ref = sTrainerTable->Resolve(name);
   if (ref != nullptr) {
