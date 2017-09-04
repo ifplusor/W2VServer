@@ -8,6 +8,7 @@
 #include <CF/StringParser.h>
 #include "Randomizer.hpp"
 #include "Vocabulary.hpp"
+#include "Word2VecModel.hpp"
 
 using namespace CF;
 
@@ -24,7 +25,7 @@ class Word2VecTrainer {
 
   Word2VecTrainer(VocabHash *vocab)
       : fVocab(vocab), syn0(nullptr), syn1neg(nullptr),
-        fModel(kModelCBOW), fVecLen(50), fWindow(5),
+        fType(kModelCBOW), fVecLen(50), fWindow(5),
         fNegative(5), fAlpha(0.025) {
     // TODO: aligned alloc
     syn0 = new real[fVecLen * fVocab->GetLength()];
@@ -43,7 +44,9 @@ class Word2VecTrainer {
 
   real *syn0, *syn1neg;
 
-  ModelType fModel;
+  ModelType fType;
+  Word2VecModel *fModel;
+
   size_t fVecLen;
   size_t fWindow;
   size_t fNegative;
@@ -71,6 +74,9 @@ void Word2VecTrainer::Feeding(StrPtrLen &sentence) {
     senIdx[senLen++] = (*fVocab)[word];
   }
 
+  size_t *ctx = new size_t[fWindow * 2];
+  size_t ctxLen = 0;
+
   for (size_t senPos = 0; senPos < senLen; senPos++) {
     size_t curWord = senIdx[senPos];
     if (curWord == 0) continue;
@@ -86,8 +92,10 @@ void Word2VecTrainer::Feeding(StrPtrLen &sentence) {
       lastWord = senIdx[c];
       if (lastWord == 0) continue; // 不在词表中
 
-
+      ctx[ctxLen++] = lastWord;
     }
+
+    fModel->Step(curWord, ctx, ctxLen);
   }
 }
 

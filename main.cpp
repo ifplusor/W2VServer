@@ -4,6 +4,7 @@
 
 #include <CF/CF.h>
 #include "Vocabulary.hpp"
+#include "Word2VecTrainer.hpp"
 
 using namespace CF;
 
@@ -48,6 +49,10 @@ CF_Error CFExit(CF_Error exitCode) {
 void test(StrPtrLen *name) {
   Vocabulary *vocab = new Vocabulary();
   Sampler<Word> *sampler = new Sampler<Word>(*vocab);
+
+  VocabHash *vocabHash = new VocabHash();
+
+  Word2VecTrainer *trainer = new Word2VecTrainer(vocabHash);
 
   delete sampler;
   delete vocab;
