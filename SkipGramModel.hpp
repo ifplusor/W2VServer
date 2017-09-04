@@ -10,20 +10,20 @@
 
 class SkipGramModel : public Word2VecModel {
  public:
-  SkipGramModel(size_t vocabLen, size_t vecLen, size_t sampleNum)
-      : SkipGramModel(vocabLen, vecLen, sampleNum) {}
+  SkipGramModel(Sampler *sampler, size_t vocabLen, size_t vecLen,
+                size_t sampleNum, double alpha)
+      : Word2VecModel(sampler, vocabLen, vecLen, sampleNum, alpha) {}
 
-  virtual ~CBOWModel() {}
+  ~SkipGramModel() override = default;
 
   void Step(size_t center, const size_t *context, size_t len) override;
 };
 
 void SkipGramModel::Step(size_t center, const size_t *context, size_t len) {
-  ll a, b, c, d;
-  ll l1, l2, label;
-  real f, g;
+  size_t a, b, c, d;
+  size_t l1, l2;
+  real f, g, label;
   size_t lastWord, target;
-  ull random;
 
   real *neu1 = (real *) calloc(fVecLen, sizeof(real));
   real *neu1e = (real *) calloc(fVecLen, sizeof(real));

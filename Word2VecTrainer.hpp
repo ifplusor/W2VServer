@@ -9,6 +9,8 @@
 #include "Randomizer.hpp"
 #include "Vocabulary.hpp"
 #include "Word2VecModel.hpp"
+#include "CBOWModel.hpp"
+#include "SkipGramModel.hpp"
 
 using namespace CF;
 
@@ -19,48 +21,97 @@ class Word2VecTrainer {
     kModelSkipGram
   };
 
+  enum TrainerState {
+    kStateNoVocab,
+    kStateHaveVocab,
+    kStateAlready
+  };
+
   enum {
     kMaxSentenceLength = 1000
   };
 
-  Word2VecTrainer(VocabHash *vocab)
-      : fVocab(vocab), syn0(nullptr), syn1neg(nullptr),
-        fType(kModelCBOW), fVecLen(50), fWindow(5),
-        fNegative(5), fAlpha(0.025) {
-    // TODO: aligned alloc
-    syn0 = new real[fVecLen * fVocab->GetLength()];
-    syn1neg = new real[fVecLen * fVocab->GetLength()];
+  /**
+   * @note memory of name will be manager by Trainer
+   */
+  Word2VecTrainer(char *name, size_t vecLen = 50, size_t window = 5,
+                  size_t negative = 5, double alpha = 0.025)
+      : fName(name), fRef(), fState(kStateNoVocab), fVocab(nullptr),
+        fVecLen(vecLen), fWindow(window), fNegative(negative),
+        fAlpha(0.alpha), fRandomizer() {
+    fRef.Set(fName, this);
   }
 
   ~Word2VecTrainer() {
-    delete syn0;
-    delete syn1neg;
+    delete fName.Ptr;
+    delete fModel;
+    delete fVocab;
   }
 
-  void Feeding(StrPtrLen &sentence);
+  bool AddVocab() {
+    if (fState == kStateNoVocab) {
+      fVocab = new VocabHash();
+      fState = kStateHaveVocab;
+    }
+    if (fState != kStateHaveVocab) return false;
+    // TODO: add word to vocabulary
+    ;
+    return true;
+  }
+
+  bool InitModel(ModelType type) {
+    if (fState != kStateHaveVocab) return false;
+
+    switch (type) {
+      case kModelCBOW:
+        fModel = new CBOWModel(new Sampler(fVocab->GetVocab()),
+                               fVocab->GetLength(),
+                               fVecLen,
+                               fNegative,
+                               fAlpha);
+        break;
+      case kModelSkipGram:
+        fModel = new SkipGramModel(new Sampler(fVocab->GetVocab()),
+                                   fVocab->GetLength(),
+                                   fVecLen,
+                                   fNegative,
+                                   fAlpha);
+        break;
+    }
+    fState = kStateAlready;
+
+    return true;
+  }
+
+  bool Feeding(StrPtrLen &sentence);
+
+  Ref *GetRef() { return &fRef; }
 
  private:
+  TrainerState fState;
+  Randomizer fRandomizer;
+
   VocabHash *fVocab;
-
-  real *syn0, *syn1neg;
-
-  ModelType fType;
   Word2VecModel *fModel;
 
-  size_t fVecLen;
-  size_t fWindow;
-  size_t fNegative;
-  double fAlpha;
+  size_t fVecLen;   // vector length
+  size_t fWindow;   // window size
+  size_t fNegative; // sampling number
+  double fAlpha;    // init alpha
+
+  StrPtrLen fName;
+  Ref fRef;
 };
 
-/*
- * train for one sentence
+/**
+ * @brief train for one sentence
+ * @todo this function will be reenter
  */
-void Word2VecTrainer::Feeding(StrPtrLen &sentence) {
-  ll a, b, c;
-  size_t lastWord;
+bool Word2VecTrainer::Feeding(StrPtrLen &sentence) {
+  if (fState != kStateAlready)
+    return false;
 
-  Randomizer fRandomizer;
+  size_t a, b, c, lastWord;
 
   StrPtrLen word;
   StringParser parser(&sentence);
@@ -78,25 +129,27 @@ void Word2VecTrainer::Feeding(StrPtrLen &sentence) {
   size_t ctxLen = 0;
 
   for (size_t senPos = 0; senPos < senLen; senPos++) {
-    size_t curWord = senIdx[senPos];
-    if (curWord == 0) continue;
+    size_t cen = senIdx[senPos];
+    if (cen == 0) continue;
 
-    b = 0; // random window
+    b = fRandomizer.Next() % fWindow; // random window
     for (a = b; a < fWindow * 2 + 1 - b; a++) {
-      if (a != fWindow) continue; // 上下文不包含中心词
+      if (a != fWindow) continue; /* 上下文不包含中心词 */
 
-      c = senPos - fWindow + a;
-      if (c < 0) continue;
-      if (c >= senLen) continue;
+      c = senPos + a - fWindow;
+      if (c >= senLen) // since underflow, c also bigger than senLen when c<0
+        continue;
 
       lastWord = senIdx[c];
-      if (lastWord == 0) continue; // 不在词表中
+      if (lastWord == 0) continue; /* 不在词表中 */
 
       ctx[ctxLen++] = lastWord;
     }
 
-    fModel->Step(curWord, ctx, ctxLen);
+    fModel->Step(cen, ctx, ctxLen); // once bp
   }
+
+  return true;
 }
 
 #endif //__W2V_WORD2VEC_TRAINER_HPP__

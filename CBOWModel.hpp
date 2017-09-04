@@ -10,20 +10,20 @@
 
 class CBOWModel : public Word2VecModel {
  public:
-  CBOWModel(size_t vocabLen, size_t vecLen, size_t sampleNum)
-      : Word2VecModel(vocabLen, vecLen, sampleNum) {}
+  CBOWModel(Sampler *sampler, size_t vocabLen, size_t vecLen,
+            size_t sampleNum, double alpha)
+      : Word2VecModel(sampler, vocabLen, vecLen, sampleNum, alpha) {}
 
-  virtual ~CBOWModel() {}
+  ~CBOWModel() override = default;
 
   void Step(size_t center, const size_t *context, size_t len) override;
 };
 
 void CBOWModel::Step(size_t center, const size_t *context, size_t len) {
-  ll a, b, c, d;
-  ll l1, l2, label;
-  real f, g;
+  size_t a, b, c, d;
+  size_t l1, l2;
+  real f, g, label;
   size_t lastWord, target;
-  ull random;
 
   real *neu1 = (real *) calloc(fVecLen, sizeof(real));
   real *neu1e = (real *) calloc(fVecLen, sizeof(real));
@@ -40,10 +40,10 @@ void CBOWModel::Step(size_t center, const size_t *context, size_t len) {
   }
 
   for (d = 0; d < fNegative + 1; d++) {
-    if (d == 0) { // 正样本
+    if (d == 0) { /* 正样本 */
       target = center;
       label = 1;
-    } else { // 负样本
+    } else { /* 负样本 */
       target = fSampler->Sampling();
       if (target == center) continue;
       label = 0;

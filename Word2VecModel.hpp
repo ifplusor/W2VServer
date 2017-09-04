@@ -10,8 +10,17 @@
 
 class Word2VecModel {
  public:
-  Word2VecModel(size_t vocabLen, size_t vecLen, size_t sampleNum)
-      : fVocabLen(vocabLen), fVecLen(vecLen), fNegative(sampleNum) {
+
+  /*
+   * once dp, update model arguments
+   */
+  virtual void Step(size_t center, const size_t *context, size_t len) = 0;
+
+ protected:
+  Word2VecModel(Sampler *sampler, size_t vocabLen, size_t vecLen,
+                size_t sampleNum, double alpha)
+      : fSampler(sampler), fVocabLen(vocabLen), fVecLen(vecLen),
+        fNegative(sampleNum), fAlpha(alpha) {
     syn0 = new real[fVecLen * fVocabLen];
     syn1neg = new real[fVecLen * fVocabLen];
   }
@@ -21,9 +30,6 @@ class Word2VecModel {
     delete syn1neg;
   }
 
-  virtual void Step(size_t center, const size_t *context, size_t len);
-
- protected:
   Sampler *fSampler;
 
   size_t fVocabLen, fVecLen, fNegative;

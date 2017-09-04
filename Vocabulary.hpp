@@ -130,6 +130,8 @@ class VocabHash {
     fHashBucket[idx] = fVocab.InsertWord(word);
   }
 
+  Vocabulary &GetVocab() { return fVocab; }
+
   size_t GetLength() { return fVocab.GetLength(); }
 
   size_t operator[](char *word) {
