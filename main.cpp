@@ -40,42 +40,62 @@ CF_Error CFExit(CF_Error exitCode) {
 /*
  * 创建训练器
  */
-void construct(StrPtrLen *name) {
+void construct(StrPtrLen &name) {
 
-  Ref *ref = sTrainerTable->Resolve(name);
+  Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
     sTrainerTable->Release(ref);
     return;
   }
 
-  Word2VecTrainer *trainer = new Word2VecTrainer(name->GetAsCString());
+  Word2VecTrainer *trainer = new Word2VecTrainer(name.GetAsCString());
   sTrainerTable->Register(trainer->GetRef());
 }
 
 /*
  * 销毁训练器
  */
-void destruct(StrPtrLen *name) {
-  Ref *ref = sTrainerTable->Resolve(name);
+void destruct(StrPtrLen &name) {
+  Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
     sTrainerTable->UnRegister(ref, 1);
     delete ref->GetObject();
   }
 }
 
-void literate(StrPtrLen *name) {
-  Ref *ref = sTrainerTable->Resolve(name);
+/*
+ * 加载词典
+ */
+void literate(StrPtrLen &name) {
+  Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
     Word2VecTrainer *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
-    trainer->AddVocab();
+    // TODO: Get words
+    char *word = nullptr;
+    trainer->AddWordToVocab(word);
+  }
+}
+
+/*
+ * 训练就绪
+ */
+void ready(StrPtrLen &name, StrPtrLen &type) {
+  Ref *ref = sTrainerTable->Resolve(&name);
+  if (ref != nullptr) {
+    Word2VecTrainer *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
+    if (type.Equal("cbow")) {
+      trainer->InitModel(Word2VecTrainer::kModelCBOW);
+    } else {
+      trainer->InitModel(Word2VecTrainer::kModelSkipGram);
+    }
   }
 }
 
 /*
  * 用句子训练模型
  */
-void feeding(StrPtrLen *name, StrPtrLen &sentence) {
-  Ref *ref = sTrainerTable->Resolve(name);
+void feeding(StrPtrLen &name, StrPtrLen &sentence) {
+  Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
     Word2VecTrainer *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
     trainer->Feeding(sentence);
@@ -89,8 +109,6 @@ CF_Error DefaultCGI(CF::Net::HTTPPacket &request,
   StrPtrLen *content = new StrPtrLen(formatter.GetAsCString(),
                                      formatter.GetCurrentOffset());
   response.SetBody(content);
-
-  construct(nullptr);
 
   return CF_NoErr;
 }
