@@ -38,7 +38,7 @@ class Word2VecTrainer {
                   size_t negative = 5, double alpha = 0.025)
       : fName(name), fRef(), fState(kStateNoVocab), fVocab(nullptr),
         fVecLen(vecLen), fWindow(window), fNegative(negative),
-        fAlpha(0.alpha), fRandomizer() {
+        fAlpha(alpha), fRandomizer() {
     fRef.Set(fName, this);
   }
 
@@ -64,14 +64,14 @@ class Word2VecTrainer {
 
     switch (type) {
       case kModelCBOW:
-        fModel = new CBOWModel(new Sampler(fVocab->GetVocab()),
+        fModel = new CBOWModel(new Sampler<Word>(fVocab->GetVocab()),
                                fVocab->GetLength(),
                                fVecLen,
                                fNegative,
                                fAlpha);
         break;
       case kModelSkipGram:
-        fModel = new SkipGramModel(new Sampler(fVocab->GetVocab()),
+        fModel = new SkipGramModel(new Sampler<Word>(fVocab->GetVocab()),
                                    fVocab->GetLength(),
                                    fVecLen,
                                    fNegative,

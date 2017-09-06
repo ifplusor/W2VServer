@@ -10,7 +10,7 @@
 
 class CBOWModel : public Word2VecModel {
  public:
-  CBOWModel(Sampler *sampler, size_t vocabLen, size_t vecLen,
+  CBOWModel(Sampler<Word> *sampler, size_t vocabLen, size_t vecLen,
             size_t sampleNum, double alpha)
       : Word2VecModel(sampler, vocabLen, vecLen, sampleNum, alpha) {}
 
