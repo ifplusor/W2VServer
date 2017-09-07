@@ -3,8 +3,7 @@
 //
 
 #include <CF/CF.h>
-#include "Vocabulary.hpp"
-#include "Word2VecTrainer.hpp"
+#include "word2vec.h"
 
 using namespace CF;
 
@@ -16,99 +15,74 @@ class MyConfig : public CFConfigure {
   HTTPMapping *GetHttpMapping() override {
     static HTTPMapping defaultHttpMapping[] = {
         {"/exit", (CF_CGIFunction) DefaultExitCGI},
-        {"/", (CF_CGIFunction) DefaultCGI},
+        {"/construct", (CF_CGIFunction) DefaultCGI},
+        {"/destruct", (CF_CGIFunction) DefaultCGI},
+        {"/literate", (CF_CGIFunction) DefaultCGI},
+        {"/ready", (CF_CGIFunction) DefaultCGI},
+        {"/feeding", (CF_CGIFunction) DefaultCGI},
         {NULL, NULL}
     };
     return defaultHttpMapping;
   }
 };
 
-RefTable *sTrainerTable = nullptr;
-
 CF_Error CFInit(int argc, char **argv) {
   CFConfigure *config = new MyConfig();
   CFEnv::Register(config);
-  sTrainerTable = new RefTable();
+  initialize();
   return CF_NoErr;
 }
 
 CF_Error CFExit(CF_Error exitCode) {
-  delete sTrainerTable;
+  release();
   return CF_NoErr;
 }
 
-/*
- * 创建训练器
- */
-void construct(StrPtrLen &name) {
-
-  Ref *ref = sTrainerTable->Resolve(&name);
-  if (ref != nullptr) {
-    sTrainerTable->Release(ref);
-    return;
-  }
-
-  Word2VecTrainer *trainer = new Word2VecTrainer(name.GetAsCString());
-  sTrainerTable->Register(trainer->GetRef());
-}
-
-/*
- * 销毁训练器
- */
-void destruct(StrPtrLen &name) {
-  Ref *ref = sTrainerTable->Resolve(&name);
-  if (ref != nullptr) {
-    sTrainerTable->UnRegister(ref, 1);
-    delete ref->GetObject();
-  }
-}
-
-/*
- * 加载词典
- */
-void literate(StrPtrLen &name) {
-  Ref *ref = sTrainerTable->Resolve(&name);
-  if (ref != nullptr) {
-    Word2VecTrainer *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
-    // TODO: Get words
-    char *word = nullptr;
-    trainer->AddWordToVocab(word);
-  }
-}
-
-/*
- * 训练就绪
- */
-void ready(StrPtrLen &name, StrPtrLen &type) {
-  Ref *ref = sTrainerTable->Resolve(&name);
-  if (ref != nullptr) {
-    Word2VecTrainer *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
-    if (type.Equal("cbow")) {
-      trainer->InitModel(Word2VecTrainer::kModelCBOW);
-    } else {
-      trainer->InitModel(Word2VecTrainer::kModelSkipGram);
-    }
-  }
-}
-
-/*
- * 用句子训练模型
- */
-void feeding(StrPtrLen &name, StrPtrLen &sentence) {
-  Ref *ref = sTrainerTable->Resolve(&name);
-  if (ref != nullptr) {
-    Word2VecTrainer *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
-    trainer->Feeding(sentence);
-  }
+StrPtrLen *GenerateBody(W2V_Error err) {
+  ResizeableStringFormatter formatter;
+  formatter.Put("{\"code\":");
+  formatter.Put(err);
+  formatter.Put(",\"message\":\"");
+  formatter.Put(sCodeMessage[err]);
+  formatter.Put("\"}");
+  return new StrPtrLen(formatter.GetAsCString(), formatter.GetCurrentOffset());
 }
 
 CF_Error DefaultCGI(CF::Net::HTTPPacket &request,
                     CF::Net::HTTPPacket &response) {
-  ResizeableStringFormatter formatter(nullptr, 0);
-  formatter.Put("test content\n");
-  StrPtrLen *content = new StrPtrLen(formatter.GetAsCString(),
-                                     formatter.GetCurrentOffset());
-  response.SetBody(content);
+  W2V_Error retErr = W2V_NoErr;
+
+  StrPtrLen name(const_cast<char *>(request.GetQueryValues("trainer")));
+  if (name.Len == 0) {
+    retErr = W2V_BadRequest;
+  } else {
+    StrPtrLen *path = request.GetRequestRelativeURI();
+    if (path->Equal("/feeding")) {
+      StrPtrLen *sentences = request.GetBody();
+      if (sentences != nullptr) {
+        retErr = feeding(name, *sentences);
+      } else {
+        retErr = W2V_BadRequest;
+      }
+    } else if (path->Equal("/literate")) {
+      StrPtrLen *vocab = request.GetBody();
+      if (vocab != nullptr) {
+        retErr = literate(name, *vocab);
+      } else {
+        retErr = W2V_BadRequest;
+      }
+    } else if (path->Equal("/construct")) {
+      retErr = construct(name);
+    } else if (path->Equal("/ready")) {
+      StrPtrLen type(const_cast<char *>(request.GetQueryValues("type")));
+      retErr = ready(name, type);
+    } else if (path->Equal("/destruct")) {
+      retErr = destruct(name);
+    }
+  }
+
+  StrPtrLen *respBody = GenerateBody(retErr);
+  response.SetBody(respBody);
 
   return CF_NoErr;
 }

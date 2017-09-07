@@ -48,14 +48,16 @@ class Word2VecTrainer {
     delete fVocab;
   }
 
-  bool AddWordToVocab(char *word) {
+  bool CanAddVocab() {
     if (fState == kStateNoVocab) {
       fVocab = new VocabHash();
       fState = kStateHaveVocab;
     }
-    if (fState != kStateHaveVocab) return false;
-    // TODO: add word to vocabulary
-    fVocab->InsertWord(word);
+    return !(fState != kStateHaveVocab);
+  }
+
+  bool AddWordToVocab(StrPtrLen &word, size_t count) {
+    fVocab->InsertWord(word, count);
     return true;
   }
 

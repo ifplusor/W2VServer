@@ -14,10 +14,11 @@ endif()
 
 set(HEADER_FILES
         types.h ExpTable.hpp Randomizer.hpp Sampler.hpp Vocabulary.hpp
-        Word2VecModel.hpp CBOWModel.hpp SkipGramModel.hpp Word2VecTrainer.hpp)
+        Word2VecModel.hpp CBOWModel.hpp SkipGramModel.hpp Word2VecTrainer.hpp
+        word2vec.h)
 
 set(SOURCE_FILES
-        main.cpp)
+        main.cpp word2vec.cpp)
 
 add_executable(W2VServer
         ${HEADER_FILES} ${SOURCE_FILES})
