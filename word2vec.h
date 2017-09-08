@@ -28,6 +28,6 @@ W2V_Error construct(CF::StrPtrLen &name);
 W2V_Error destruct(CF::StrPtrLen &name);
 W2V_Error literate(CF::StrPtrLen &name, CF::StrPtrLen &vocab);
 W2V_Error ready(CF::StrPtrLen &name, CF::StrPtrLen &type);
-W2V_Error feeding(CF::StrPtrLen &name, CF::StrPtrLen &sentences);
+W2V_Error feeding(CF::StrPtrLen &name, CF::StrPtrLen *sentences);
 
 #endif // __W2V_WORD2VEC_H__

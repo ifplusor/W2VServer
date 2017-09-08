@@ -60,7 +60,10 @@ CF_Error DefaultCGI(CF::Net::HTTPPacket &request,
     if (path->Equal("/feeding")) {
       StrPtrLen *sentences = request.GetBody();
       if (sentences != nullptr) {
-        retErr = feeding(name, *sentences);
+        // memory of sentences will be managed by trainer
+        retErr = feeding(name, sentences);
+        if (retErr == W2V_NoErr)
+          request.SetBody(nullptr, false);
       } else {
         retErr = W2V_BadRequest;
       }

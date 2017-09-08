@@ -12,17 +12,21 @@
 template<class T>
 class Sampler;
 
-
 class Countable {
  public:
   Countable(size_t count = 0) : fCount(count) {}
 
   void Reset(size_t count = 0) { fCount = count; }
 
+  size_t Add(size_t count = 1) { return fCount += count; }
+
+  size_t Count() { return fCount; }
+
  private:
   size_t fCount;
 
-  template<class T> friend class Sampler;
+  template<class T>
+  friend class Sampler;
 };
 
 template<class T>
@@ -56,14 +60,16 @@ class Sampler {
     d1 = (real) (pow(static_cast<Countable &>(set[i]).fCount, power)
         / (real) powSum);
     for (a = 0; a < fTableSize; a++) {
-      fTable[a] = i;
-      if (a / (real) fTableSize > d1) {
+      if (a / (real) fTableSize >= d1) { // 计算下一个词的概率长度
         i++;
-        // 计算下一个词的概率长度
-        d1 += pow(static_cast<Countable &>(set[i]).fCount, power)
-            / (real) powSum;
+        if (i >= fSampleSize) {
+          i = fSampleSize - 1;
+        } else {
+          d1 += pow(static_cast<Countable &>(set[i]).fCount, power)
+              / (real) powSum;
+        }
       }
-      if (i >= fSampleSize) i = fSampleSize - 1;
+      fTable[a] = i;
     }
   }
 

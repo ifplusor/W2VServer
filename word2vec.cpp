@@ -41,69 +41,80 @@ W2V_Error construct(StrPtrLen &name) {
   struct Core::Mutex sMutex;
   Core::MutexLocker locker(&sMutex);
 
+  W2V_Error err = W2V_NoErr;
   Ref *ref = sTrainerTable->Resolve(&name);
-  if (ref != nullptr) {
-    sTrainerTable->Release(ref);
-    return W2V_Exists;
+  if (ref == nullptr) {
+    auto *trainer = new Word2VecTrainer(name.GetAsCString());
+    sTrainerTable->Register(trainer->GetRef());
+  } else {
+    err = W2V_Exists;
   }
-
-  auto *trainer = new Word2VecTrainer(name.GetAsCString());
-  sTrainerTable->Register(trainer->GetRef());
-
-  return W2V_NoErr;
+  return err;
 }
 
-/*
- * 销毁训练器
+/**
+ * @brief 销毁训练器
  */
 W2V_Error destruct(StrPtrLen &name) {
+  W2V_Error err = W2V_NoErr;
   Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
-    if (!sTrainerTable->TryUnRegister(ref, 1)) {
+    if (sTrainerTable->TryUnRegister(ref, 1)) {
+      delete ref->GetObject();
+    } else {
       sTrainerTable->Release(ref);
-      return W2V_Busy;
+      err = W2V_Busy;
     }
-    delete ref->GetObject();
   } else {
-    return W2V_NotExists;
+    err = W2V_NotExists;
   }
-  return W2V_NoErr;
+  return err;
 }
 
-/*
- * 加载词典
+/**
+ * @brief 加载词典
  */
 W2V_Error literate(StrPtrLen &name, StrPtrLen &vocab) {
+  W2V_Error err = W2V_NoErr;
   Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
     auto *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
-    if (!trainer->CanAddVocab()) return W2V_ErrorState;
-    StringParser checkParser(&vocab);
-    while (checkParser.GetDataRemaining() > 0) {
-      if (!checkParser.GetThru(nullptr, '\t')) return W2V_BadFormat;
-      if (checkParser.ConsumeInteger() == 0) return W2V_BadFormat;
-      if (!checkParser.ExpectEOL()) return W2V_BadFormat;
-    }
-    StrPtrLen word;
-    UInt32 count;
-    StringParser vocabParser(&vocab);
-    while (vocabParser.GetDataRemaining() > 0) {
-      vocabParser.GetThru(&word, '\t');
-      count = vocabParser.ConsumeInteger();
-      vocabParser.ConsumeEOL(nullptr);
-      trainer->AddWordToVocab(word, count);
+    if (trainer->CanAddVocab()) {
+      StringParser checkParser(&vocab);
+      while (checkParser.GetDataRemaining() > 0) {
+        if (!checkParser.GetThru(nullptr, '\t') ||
+            checkParser.ConsumeInteger() == 0 ||
+            !checkParser.ExpectEOL()) {
+          err = W2V_BadFormat;
+          break;
+        }
+      }
+      if (err == W2V_NoErr) {
+        StrPtrLen word;
+        UInt32 count;
+        StringParser vocabParser(&vocab);
+        while (vocabParser.GetDataRemaining() > 0) {
+          vocabParser.GetThru(&word, '\t');
+          count = vocabParser.ConsumeInteger();
+          vocabParser.ConsumeEOL(nullptr);
+          trainer->AddWordToVocab(word, count);
+        }
+      }
+    } else {
+      err = W2V_ErrorState;
     }
     sTrainerTable->Release(ref);
   } else {
-    return W2V_NotExists;
+    err = W2V_NotExists;
   }
-  return W2V_NoErr;
+  return err;
 }
 
-/*
- * 训练就绪
+/**
+ * @brief 训练就绪
  */
 W2V_Error ready(StrPtrLen &name, StrPtrLen &type) {
+  W2V_Error err = W2V_NoErr;
   Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
     auto *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
@@ -114,22 +125,39 @@ W2V_Error ready(StrPtrLen &name, StrPtrLen &type) {
     }
     sTrainerTable->Release(ref);
   } else {
-    return W2V_NotExists;
+    err = W2V_NotExists;
   }
-  return W2V_NoErr;
+  return err;
 }
 
-/*
- * 用句子训练模型
+/**
+ * @brief 用句子训练模型
  */
-W2V_Error feeding(StrPtrLen &name, StrPtrLen &sentences) {
+W2V_Error feeding(StrPtrLen &name, StrPtrLen *sentences) {
+  W2V_Error err = W2V_NoErr;
   Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
     auto *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
-    trainer->Feeding(sentences);
+    if (trainer->CanFeeding()) {
+      trainer->Feeding(sentences);
+    } else {
+      err = W2V_ErrorState;
+    }
     sTrainerTable->Release(ref);
   } else {
-    return W2V_NotExists;
+    err = W2V_NotExists;
   }
-  return W2V_NoErr;
+  return err;
+}
+
+W2V_Error dump(StrPtrLen &name) {
+  W2V_Error err = W2V_NoErr;
+  Ref *ref = sTrainerTable->Resolve(&name);
+  if (ref != nullptr) {
+    auto *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
+    sTrainerTable->Release(ref);
+  } else {
+    err = W2V_NotExists;
+  }
+  return err;
 }
