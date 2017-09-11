@@ -123,7 +123,7 @@ class Word2VecTrainer : public Thread::Task {
 bool Word2VecTrainer::Feeding(StrPtrLen *sentences) {
 
   if (sentences != nullptr) {
-    fCorpus.EnQueue(new QueueElem(&sentences));
+    fCorpus.EnQueue(new QueueElem(sentences));
     Signal(Thread::Task::kReadEvent);
   }
 
@@ -160,8 +160,10 @@ SInt64 Word2VecTrainer::Run() {
       while (parser.GetDataRemaining()) {
         if (senLen >= kMaxSentenceLength) break;
         parser.GetThru(&word, ' ');
+        size_t idx = (*fVocab)[word];
+//        if (idx == 0) continue;
         // TODO: subsampling
-        senIdx[senLen++] = (*fVocab)[word];
+        senIdx[senLen++] = idx;
       }
 
       size_t *ctx = new size_t[fWindow * 2];
@@ -173,7 +175,7 @@ SInt64 Word2VecTrainer::Run() {
 
         b = fRandomizer.Next() % fWindow; // random window
         for (a = b; a < fWindow * 2 + 1 - b; a++) {
-          if (a != fWindow) continue; /* 上下文不包含中心词 */
+          if (a == fWindow) continue; /* 上下文不包含中心词 */
 
           c = senPos + a - fWindow;
           if (c >= senLen) // since underflow, c also bigger than senLen(if c<0)
@@ -188,6 +190,8 @@ SInt64 Word2VecTrainer::Run() {
         fModel->Step(cen, ctx, ctxLen); // once bp
       }
     }
+
+    delete corpus; // delete corpus, it type is StrPtrLenDel
   }
 
   return 0;
