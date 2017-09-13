@@ -25,6 +25,7 @@ RefTable *sTrainerTable = nullptr;
 
 W2V_Error initialize() {
   sTrainerTable = new RefTable();
+  Word2VecTrainTask::Initial();
   return W2V_NoErr;
 }
 
@@ -59,8 +60,9 @@ W2V_Error destruct(StrPtrLen &name) {
   W2V_Error err = W2V_NoErr;
   Ref *ref = sTrainerTable->Resolve(&name);
   if (ref != nullptr) {
-    if (sTrainerTable->TryUnRegister(ref, 1)) {
-      delete ref->GetObject();
+    auto *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
+    if (trainer->CanDestruct() && sTrainerTable->TryUnRegister(ref, 1)) {
+        delete ref->GetObject();
     } else {
       sTrainerTable->Release(ref);
       err = W2V_Busy;
@@ -131,7 +133,7 @@ W2V_Error ready(StrPtrLen &name, StrPtrLen &type) {
 }
 
 /**
- * @brief 用句子训练模型
+ * @brief 用句子训练模型，非阻塞
  */
 W2V_Error feeding(StrPtrLen &name, StrPtrLen *sentences) {
   W2V_Error err = W2V_NoErr;

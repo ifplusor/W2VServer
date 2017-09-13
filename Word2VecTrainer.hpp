@@ -15,7 +15,7 @@
 
 using namespace CF;
 
-class Word2VecTrainer : public Thread::Task {
+class Word2VecTrainer {
  public:
   enum ModelType {
     kModelCBOW,
@@ -28,18 +28,14 @@ class Word2VecTrainer : public Thread::Task {
     kStateAlready
   };
 
-  enum {
-    kMaxSentenceLength = 1000
-  };
-
   /**
    * @note memory of name will be manager by Trainer
    */
   Word2VecTrainer(char *name, size_t vecLen = 50, size_t window = 5,
                   size_t negative = 5, double alpha = 0.025)
       : fName(name), fRef(), fState(kStateNoVocab), fVocab(nullptr),
-        fVecLen(vecLen), fWindow(window), fNegative(negative),
-        fAlpha(alpha), fRandomizer(), fCorpus() {
+        fModel(nullptr), fVecLen(vecLen), fWindow(window), fNegative(negative),
+        fAlpha(alpha) {
     fRef.Set(fName, this);
   }
 
@@ -47,6 +43,10 @@ class Word2VecTrainer : public Thread::Task {
     delete fName.Ptr;
     delete fModel;
     delete fVocab;
+  }
+
+  bool CanDestruct() {
+    return true;
   }
 
   bool CanAddVocab() {
@@ -60,10 +60,6 @@ class Word2VecTrainer : public Thread::Task {
   bool AddWordToVocab(StrPtrLen &word, size_t count) {
     fVocab->InsertWord(word, count);
     return true;
-  }
-
-  bool CanFeeding() {
-    return fState == kStateAlready;
   }
 
   bool InitModel(ModelType type) {
@@ -85,24 +81,35 @@ class Word2VecTrainer : public Thread::Task {
                                    fAlpha);
         break;
     }
-    fState = kStateAlready;
 
+    fState = kStateAlready;
     return true;
   }
 
-  bool Feeding(StrPtrLen *sentences);
+  bool CanFeeding() {
+    return fState == kStateAlready;
+  }
 
-  bool Dump();
+  /**
+ * @brief train model with sentences
+ *
+ * push sentence to corpus queue, than signal train threads.
+ */
+  bool Feeding(StrPtrLen *sentences) {
+    if (sentences != nullptr) {
+      Word2VecTrainTask *task = new Word2VecTrainTask(this, sentences);
+      task->SetThreadPicker(Thread::Task::GetBlockingTaskThreadPicker());
+      task->Signal(Thread::Task::kUpdateEvent);
+    }
+    return true;
+  }
 
-  SInt64 Run() override;
+  bool Dump() {}
 
   Ref *GetRef() { return &fRef; }
 
  private:
   TrainerState fState;
-  Randomizer fRandomizer;
-
-  ConcurrentQueue fCorpus;
 
   VocabHash *fVocab;
   Word2VecModel *fModel;
@@ -114,87 +121,121 @@ class Word2VecTrainer : public Thread::Task {
 
   StrPtrLen fName;
   Ref fRef;
+
+  friend class Word2VecTrainTask;
 };
 
 /**
- * @brief train for one sentence
- * @todo this function will be reenter
+ * @note once task
  */
-bool Word2VecTrainer::Feeding(StrPtrLen *sentences) {
+class Word2VecTrainTask : public Thread::Task {
+ public:
+  enum {
+    kMaxSentenceLength = 1000
+  };
 
-  if (sentences != nullptr) {
-    fCorpus.EnQueue(new QueueElem(sentences));
-    Signal(Thread::Task::kReadEvent);
+  static void Initial() {
+#if __PTHREADS__
+    pthread_key_create(&gSentenceKey, [](void *v) {
+      delete[] v;
+    });
+#endif
   }
 
-  return true;
-}
+  Word2VecTrainTask(Word2VecTrainer *trainer, StrPtrLen *corpus)
+      : Task(), fCorpus(corpus), fWindow(trainer->fWindow),
+        fVocab(trainer->fVocab), fModel(trainer->fModel),
+        fRandomizer() {
+    this->SetTaskName("Word2VecTrainTask");
+  }
 
-bool Word2VecTrainer::Dump() {
+  ~Word2VecTrainTask() override {
+    delete fCorpus;
+  }
 
-}
+  SInt64 Run() override;
 
-SInt64 Word2VecTrainer::Run() {
+ private:
+  Randomizer fRandomizer;
+
+  VocabHash *fVocab;
+  Word2VecModel *fModel;
+  size_t fWindow;   // window size
+
+  StrPtrLen *fCorpus;
+
+#if __PTHREADS__
+  static pthread_key_t gSentenceKey = 0;
+#endif
+
+  friend class Word2VecTrainer;
+};
+
+SInt64 Word2VecTrainTask::Run() {
   EventFlags events = GetEvents();
-  if (!(events & kReadEvent)) return 0;
+  if (!(events & kUpdateEvent)) return -1;
 
   size_t a, b, c, lastWord, senLen;
-  size_t senIdx[kMaxSentenceLength];
   StrPtrLen sentence, word;
 
-  for (QueueElem *elem = fCorpus.DeQueue();
-       elem != nullptr;
-       elem = fCorpus.DeQueue()) {
-    auto *corpus = static_cast<StrPtrLen *>(elem->GetEnclosingObject());
-    delete elem;
+#if __PTHREADS__
+  size_t *senIdx = static_cast<size_t *>(pthread_getspecific(gSentenceKey));
+  if (senIdx == nullptr) {
+    senIdx = new size_t[kMaxSentenceLength];
+    pthread_setspecific(gSentenceKey, senIdx);
+  }
+#else
+  size_t senIdx[kMaxSentenceLength];
+#endif
 
-    // split sentences
-    StringParser senParser(corpus);
-    while (senParser.GetDataRemaining() > 0) {
-      senParser.GetThruEOL(&sentence);
+  // split sentences
+  size_t *ctx = new size_t[fWindow * 2];
 
-      // split words
-      StringParser parser(&sentence);
+  StringParser senParser(fCorpus);
+  while (senParser.GetDataRemaining() > 0) {
+    senParser.GetThruEOL(&sentence);
 
-      senLen = 0;
-      while (parser.GetDataRemaining()) {
-        if (senLen >= kMaxSentenceLength) break;
-        parser.GetThru(&word, ' ');
-        size_t idx = (*fVocab)[word];
+    // split words
+    StringParser parser(&sentence);
+
+    senLen = 0;
+    while (parser.GetDataRemaining()) {
+      if (senLen >= kMaxSentenceLength) break;
+      parser.GetThru(&word, ' ');
+      size_t idx = (*fVocab)[word];
 //        if (idx == 0) continue;
-        // TODO: subsampling
-        senIdx[senLen++] = idx;
-      }
-
-      size_t *ctx = new size_t[fWindow * 2];
-      size_t ctxLen = 0;
-
-      for (size_t senPos = 0; senPos < senLen; senPos++) {
-        size_t cen = senIdx[senPos];
-        if (cen == 0) continue;
-
-        b = fRandomizer.Next() % fWindow; // random window
-        for (a = b; a < fWindow * 2 + 1 - b; a++) {
-          if (a == fWindow) continue; /* 上下文不包含中心词 */
-
-          c = senPos + a - fWindow;
-          if (c >= senLen) // since underflow, c also bigger than senLen(if c<0)
-            continue;
-
-          lastWord = senIdx[c];
-          if (lastWord == 0) continue; /* 不在词表中 */
-
-          ctx[ctxLen++] = lastWord;
-        }
-
-        fModel->Step(cen, ctx, ctxLen); // once bp
-      }
+      // TODO: subsampling
+      senIdx[senLen++] = idx;
     }
 
-    delete corpus; // delete corpus, it type is StrPtrLenDel
+    size_t ctxLen = 0;
+
+    for (size_t senPos = 0; senPos < senLen; senPos++) {
+      size_t cen = senIdx[senPos];
+      if (cen == 0) continue;
+
+      b = fRandomizer.Next() % fWindow; // random window
+      for (a = b; a < fWindow * 2 + 1 - b; a++) {
+        if (a == fWindow) continue; /* 上下文不包含中心词 */
+
+        c = senPos + a - fWindow;
+        if (c >= senLen) // since underflow, c also bigger than senLen(if c<0)
+          continue;
+
+        lastWord = senIdx[c];
+        if (lastWord == 0) continue; /* 不在词表中 */
+
+        ctx[ctxLen++] = lastWord;
+      }
+
+      fModel->Step(cen, ctx, ctxLen); // once bp
+    }
   }
 
-  return 0;
+  delete ctx;
+  delete fCorpus; // delete corpus, it type is StrPtrLenDel
+
+  return -1;
 }
 
 #endif //__W2V_WORD2VEC_TRAINER_HPP__
