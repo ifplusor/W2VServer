@@ -62,7 +62,7 @@ W2V_Error destruct(StrPtrLen &name) {
   if (ref != nullptr) {
     auto *trainer = static_cast<Word2VecTrainer *>(ref->GetObject());
     if (trainer->CanDestruct() && sTrainerTable->TryUnRegister(ref, 1)) {
-        delete ref->GetObject();
+        delete (Word2VecTrainer *)ref->GetObject();
     } else {
       sTrainerTable->Release(ref);
       err = W2V_Busy;
@@ -149,6 +149,8 @@ W2V_Error feeding(StrPtrLen &name, StrPtrLen *sentences) {
   } else {
     err = W2V_NotExists;
   }
+  if (err != W2V_NoErr)
+    delete sentences;
   return err;
 }
 

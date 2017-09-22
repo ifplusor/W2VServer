@@ -15,8 +15,9 @@ class Word2VecModel {
     delete syn1neg;
   }
 
-  /*
-   * once dp, update model arguments
+  /**
+   * @brief once dp, update model arguments
+   * @todo synchronized
    */
   virtual void Step(size_t center, const size_t *context, size_t len) = 0;
 

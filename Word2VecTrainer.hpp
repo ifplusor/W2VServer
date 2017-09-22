@@ -15,6 +15,9 @@
 
 using namespace CF;
 
+/**
+ * @brief word2vec model trainer. it is designed as a state machine.
+ */
 class Word2VecTrainer {
  public:
   enum ModelType {
@@ -91,18 +94,9 @@ class Word2VecTrainer {
   }
 
   /**
- * @brief train model with sentences
- *
- * push sentence to corpus queue, than signal train threads.
- */
-  bool Feeding(StrPtrLen *sentences) {
-    if (sentences != nullptr) {
-      Word2VecTrainTask *task = new Word2VecTrainTask(this, sentences);
-      task->SetThreadPicker(Thread::Task::GetBlockingTaskThreadPicker());
-      task->Signal(Thread::Task::kUpdateEvent);
-    }
-    return true;
-  }
+   * @brief train model with sentences
+   */
+  bool Feeding(StrPtrLen *sentences);
 
   bool Dump() {}
 
@@ -137,7 +131,7 @@ class Word2VecTrainTask : public Thread::Task {
   static void Initial() {
 #if __PTHREADS__
     pthread_key_create(&gSentenceKey, [](void *v) {
-      delete[] v;
+      delete[] (size_t*)v;
     });
 #endif
   }
@@ -150,7 +144,7 @@ class Word2VecTrainTask : public Thread::Task {
   }
 
   ~Word2VecTrainTask() override {
-    delete fCorpus;
+    delete fCorpus; // delete corpus, it type is StrPtrLenDel
   }
 
   SInt64 Run() override;
@@ -165,11 +159,31 @@ class Word2VecTrainTask : public Thread::Task {
   StrPtrLen *fCorpus;
 
 #if __PTHREADS__
-  static pthread_key_t gSentenceKey = 0;
+  static pthread_key_t gSentenceKey;
 #endif
 
   friend class Word2VecTrainer;
 };
+
+#if __PTHREADS__
+pthread_key_t Word2VecTrainTask::gSentenceKey = 0;
+#endif
+
+
+/*
+ * In Word2VecTrainer::Feeding(), we create an Word2VecTrainTask, and put it
+ * in blocking task queue. The task will be wakeup later on, when processor is
+ * free. And Word2VecTrainTask::Run() will be called.
+ */
+
+bool Word2VecTrainer::Feeding(StrPtrLen *sentences) {
+  if (sentences != nullptr) {
+    auto *task = new Word2VecTrainTask(this, sentences);
+    task->SetThreadPicker(Thread::Task::GetBlockingTaskThreadPicker());
+    task->Signal(Thread::Task::kUpdateEvent);
+  }
+  return true;
+}
 
 SInt64 Word2VecTrainTask::Run() {
   EventFlags events = GetEvents();
@@ -179,7 +193,7 @@ SInt64 Word2VecTrainTask::Run() {
   StrPtrLen sentence, word;
 
 #if __PTHREADS__
-  size_t *senIdx = static_cast<size_t *>(pthread_getspecific(gSentenceKey));
+  auto senIdx = static_cast<size_t *>(pthread_getspecific(gSentenceKey));
   if (senIdx == nullptr) {
     senIdx = new size_t[kMaxSentenceLength];
     pthread_setspecific(gSentenceKey, senIdx);
@@ -189,7 +203,7 @@ SInt64 Word2VecTrainTask::Run() {
 #endif
 
   // split sentences
-  size_t *ctx = new size_t[fWindow * 2];
+  auto *ctx = new size_t[fWindow * 2];
 
   StringParser senParser(fCorpus);
   while (senParser.GetDataRemaining() > 0) {
@@ -233,7 +247,6 @@ SInt64 Word2VecTrainTask::Run() {
   }
 
   delete ctx;
-  delete fCorpus; // delete corpus, it type is StrPtrLenDel
 
   return -1;
 }
