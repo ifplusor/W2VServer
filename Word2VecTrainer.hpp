@@ -130,7 +130,7 @@ class Word2VecTrainTask : public Thread::Task {
 
   static void Initial() {
 #if __PTHREADS__
-    pthread_key_create(&gSentenceKey, [](void *v) {
+    pthread_key_create(&sSentenceKey, [](void *v) {
       delete[] (size_t*)v;
     });
 #endif
@@ -159,14 +159,14 @@ class Word2VecTrainTask : public Thread::Task {
   StrPtrLen *fCorpus;
 
 #if __PTHREADS__
-  static pthread_key_t gSentenceKey;
+  static pthread_key_t sSentenceKey;
 #endif
 
   friend class Word2VecTrainer;
 };
 
 #if __PTHREADS__
-pthread_key_t Word2VecTrainTask::gSentenceKey = 0;
+pthread_key_t Word2VecTrainTask::sSentenceKey = 0;
 #endif
 
 
@@ -193,10 +193,10 @@ SInt64 Word2VecTrainTask::Run() {
   StrPtrLen sentence, word;
 
 #if __PTHREADS__
-  auto senIdx = static_cast<size_t *>(pthread_getspecific(gSentenceKey));
+  auto senIdx = static_cast<size_t *>(pthread_getspecific(sSentenceKey));
   if (senIdx == nullptr) {
     senIdx = new size_t[kMaxSentenceLength];
-    pthread_setspecific(gSentenceKey, senIdx);
+    pthread_setspecific(sSentenceKey, senIdx);
   }
 #else
   size_t senIdx[kMaxSentenceLength];

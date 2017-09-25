@@ -7,8 +7,7 @@
 
 using namespace CF;
 
-CF_Error DefaultCGI(CF::Net::HTTPPacket &request,
-                    CF::Net::HTTPPacket &response);
+CF_Error DefaultCGI(Net::HTTPPacket &request, Net::HTTPPacket &response);
 
 class MyConfig : public CFConfigure {
  public:
@@ -48,8 +47,7 @@ StrPtrLen *GenerateBody(W2V_Error err) {
   return new StrPtrLen(formatter.GetAsCString(), formatter.GetCurrentOffset());
 }
 
-CF_Error DefaultCGI(CF::Net::HTTPPacket &request,
-                    CF::Net::HTTPPacket &response) {
+CF_Error DefaultCGI(Net::HTTPPacket &request, Net::HTTPPacket &response) {
   W2V_Error retErr = W2V_NoErr;
 
   StrPtrLen name(const_cast<char *>(request.GetQueryValues("trainer")));

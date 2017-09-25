@@ -25,6 +25,7 @@ RefTable *sTrainerTable = nullptr;
 
 W2V_Error initialize() {
   sTrainerTable = new RefTable();
+  Word2VecModel::Initial();
   Word2VecTrainTask::Initial();
   return W2V_NoErr;
 }

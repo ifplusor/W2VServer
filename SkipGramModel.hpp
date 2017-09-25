@@ -24,12 +24,30 @@ void SkipGramModel::Step(size_t center, const size_t *context, size_t len) {
   size_t l1, l2;
   real f, g, label;
   size_t lastWord, target;
+  real *neu1, *neu1e;
 
-  real *neu1 = (real *) calloc(fVecLen, sizeof(real));
-  real *neu1e = (real *) calloc(fVecLen, sizeof(real));
+  if (len <= 0) return;
+
+#if __PTHREADS__
+  auto layer = static_cast<neu1_layer *>(pthread_getspecific(sNeu1Key));
+  if (layer == nullptr) {
+    layer = alloc_layer(fVecLen);
+    pthread_setspecific(sNeu1Key, layer);
+  } else if (layer->len < fVecLen) {
+    auto new_layer = alloc_layer(fVecLen);
+    pthread_setspecific(sNeu1Key, new_layer);
+    release_layer(layer);
+    layer = new_layer;
+  }
+  neu1 = layer->neu1;
+  neu1e = layer->neu1e;
+#else
+  neu1 = (real *) calloc(fVecLen, sizeof(real));
+  neu1e = (real *) calloc(fVecLen, sizeof(real));
+#endif
 
   for (c = 0; c < fVecLen; c++) {
-    neu1[c] = neu1e[c] = 0.;
+    neu1e[c] = 0.;
   }
 
   for (a = 0; a < len; a++) {
@@ -67,6 +85,11 @@ void SkipGramModel::Step(size_t center, const size_t *context, size_t len) {
     // Learn weights input -> hidden
     for (c = 0; c < fVecLen; c++) syn0[c + l1] += neu1e[c];
   }
+
+#if !__PTHREADS__
+  free(neu1);
+  free(neu1e);
+#endif
 }
 
 #endif //__W2V_MODEL_SKIPGRAM_HPP__
