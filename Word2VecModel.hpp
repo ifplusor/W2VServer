@@ -8,6 +8,10 @@
 #include "types.h"
 #include "Sampler.hpp"
 
+#if USE_BLAS
+#include <cblas.h>
+#endif
+
 struct neu1_layer {
   real *neu1, *neu1e;
   size_t len;
@@ -31,15 +35,15 @@ void release_layer(void *v) {
 class Word2VecModel {
  public:
   static void Initial() {
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
     pthread_key_create(&sNeu1Key, release_layer);
     // TODO: process error
 #endif
   }
 
   virtual ~Word2VecModel() {
-    delete syn0;
-    delete syn1neg;
+    delete[] syn0;
+    delete[] syn1neg;
   }
 
   /**
@@ -55,6 +59,11 @@ class Word2VecModel {
         fNegative(sampleNum), fAlpha(alpha) {
     syn0 = new real[fVecLen * fVocabLen];
     syn1neg = new real[fVecLen * fVocabLen];
+
+    // 随机初始化
+    for (size_t a = 0; a < fVocabLen; a++)
+      for (size_t b = 0; b < fVecLen; b++)
+        syn0[a * fVecLen + b] = (real) ((rand() / (real) RAND_MAX - 0.5) / fVecLen);
   }
 
   Sampler<Word> *fSampler;
@@ -64,7 +73,7 @@ class Word2VecModel {
 
   real *syn0, *syn1neg;
 
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
   static pthread_key_t sNeu1Key;
 #endif
 };

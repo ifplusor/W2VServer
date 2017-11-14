@@ -24,11 +24,10 @@ void SkipGramModel::Step(size_t center, const size_t *context, size_t len) {
   size_t l1, l2;
   real f, g, label;
   size_t lastWord, target;
-  real *neu1, *neu1e;
 
   if (len <= 0) return;
 
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
   auto layer = static_cast<neu1_layer *>(pthread_getspecific(sNeu1Key));
   if (layer == nullptr) {
     layer = alloc_layer(fVecLen);
@@ -39,16 +38,13 @@ void SkipGramModel::Step(size_t center, const size_t *context, size_t len) {
     release_layer(layer);
     layer = new_layer;
   }
-  neu1 = layer->neu1;
-  neu1e = layer->neu1e;
+  real *neu1 = layer->neu1;
+  real *neu1e = layer->neu1e;
 #else
-  neu1 = (real *) calloc(fVecLen, sizeof(real));
-  neu1e = (real *) calloc(fVecLen, sizeof(real));
+  real neu1[kMaxVectorLength], neu1e[kMaxVectorLength];
+//  neu1 = (real *) calloc(fVecLen, sizeof(real));
+//  neu1e = (real *) calloc(fVecLen, sizeof(real));
 #endif
-
-  for (c = 0; c < fVecLen; c++) {
-    neu1e[c] = 0.;
-  }
 
   for (a = 0; a < len; a++) {
     lastWord = context[a];
@@ -56,10 +52,14 @@ void SkipGramModel::Step(size_t center, const size_t *context, size_t len) {
 
     l1 = lastWord * fVecLen;
 
+#if USE_BLAS
+    blas_copy(static_cast<const int>(fVecLen), syn0 + l1, 1, neu1, 1);
+#else
     for (c = 0; c < fVecLen; c++)
       neu1[c] = syn0[c + l1];
+#endif
 
-    for (c = 0; c < fVecLen; c++) neu1e[c] = 0;
+    for (c = 0; c < fVecLen; c++) neu1e[c] = 0.0;
 
     for (d = 0; d < fNegative + 1; d++) {
       if (d == 0) {
@@ -72,23 +72,37 @@ void SkipGramModel::Step(size_t center, const size_t *context, size_t len) {
       }
       l2 = target * fVecLen;
 
+#if USE_BLAS
+      f = blas_dot(static_cast<const int>(fVecLen), neu1, 1, syn1neg + l2, 1);
+#else
       f = 0;
       for (c = 0; c < fVecLen; c++)
         f += neu1[c] * syn1neg[c + l2];
+#endif
 
       g = (label - sigmoid(f)) * fAlpha;
 
+#if USE_BLAS
+      blas_axpy(static_cast<const int>(fVecLen), g, syn1neg + l2, 1, neu1e, 1);
+      blas_axpy(static_cast<const int>(fVecLen), g, neu1, 1, syn1neg + l2, 1);
+#else
       for (c = 0; c < fVecLen; c++) neu1e[c] += g * syn1neg[c + l2];
       for (c = 0; c < fVecLen; c++) syn1neg[c + l2] += g * neu1[c];
+#endif
     }
 
     // Learn weights input -> hidden
+#if USE_BLAS
+    blas_axpy(static_cast<const int>(fVecLen), 1, neu1e, 1, syn0 + l1, 1);
+#else
     for (c = 0; c < fVecLen; c++) syn0[c + l1] += neu1e[c];
+#endif
   }
 
-#if !__PTHREADS__
-  free(neu1);
-  free(neu1e);
+#if USE_TSD && __PTHREADS__
+#else
+//  free(neu1);
+//  free(neu1e);
 #endif
 }
 

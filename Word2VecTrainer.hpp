@@ -34,7 +34,7 @@ class Word2VecTrainer {
   /**
    * @note memory of name will be manager by Trainer
    */
-  Word2VecTrainer(char *name, size_t vecLen = 50, size_t window = 5,
+  Word2VecTrainer(char *name, size_t vecLen = 50, size_t window = 3,
                   size_t negative = 5, double alpha = 0.025)
       : fName(name), fRef(), fState(kStateNoVocab), fVocab(nullptr),
         fModel(nullptr), fVecLen(vecLen), fWindow(window), fNegative(negative),
@@ -124,12 +124,9 @@ class Word2VecTrainer {
  */
 class Word2VecTrainTask : public Thread::Task {
  public:
-  enum {
-    kMaxSentenceLength = 1000
-  };
 
   static void Initial() {
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
     pthread_key_create(&sSentenceKey, [](void *v) {
       delete[] (size_t*)v;
     });
@@ -158,14 +155,14 @@ class Word2VecTrainTask : public Thread::Task {
 
   StrPtrLen *fCorpus;
 
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
   static pthread_key_t sSentenceKey;
 #endif
 
   friend class Word2VecTrainer;
 };
 
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
 pthread_key_t Word2VecTrainTask::sSentenceKey = 0;
 #endif
 
@@ -192,7 +189,7 @@ SInt64 Word2VecTrainTask::Run() {
   size_t a, b, c, lastWord, senLen;
   StrPtrLen sentence, word;
 
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
   auto senIdx = static_cast<size_t *>(pthread_getspecific(sSentenceKey));
   if (senIdx == nullptr) {
     senIdx = new size_t[kMaxSentenceLength];
@@ -200,13 +197,12 @@ SInt64 Word2VecTrainTask::Run() {
   }
 #else
   size_t senIdx[kMaxSentenceLength];
+  size_t ctx[kMaxContextLength];
 #endif
 
   // split sentences
-  auto *ctx = new size_t[fWindow * 2];
-
   StringParser senParser(fCorpus);
-  while (senParser.GetDataRemaining() > 0) {
+  while (senParser.GetDataRemaining() > 0) { // iterate on corpus
     senParser.GetThruEOL(&sentence);
 
     // split words
@@ -224,10 +220,11 @@ SInt64 Word2VecTrainTask::Run() {
 
     size_t ctxLen = 0;
 
-    for (size_t senPos = 0; senPos < senLen; senPos++) {
+    for (size_t senPos = 0; senPos < senLen; senPos++) { // iterate on sentence
       size_t cen = senIdx[senPos];
       if (cen == 0) continue;
 
+      // get context
       b = fRandomizer.Next() % fWindow; // random window
       for (a = b; a < fWindow * 2 + 1 - b; a++) {
         if (a == fWindow) continue; /* 上下文不包含中心词 */
@@ -246,7 +243,10 @@ SInt64 Word2VecTrainTask::Run() {
     }
   }
 
-  delete ctx;
+#if USE_TSD && __PTHREADS__
+#else
+//  delete[] ctx;
+#endif
 
   return -1;
 }

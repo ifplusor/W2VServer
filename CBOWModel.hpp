@@ -28,7 +28,7 @@ void CBOWModel::Step(size_t center, const size_t *context, size_t len) {
 
   if (len <= 0) return;
 
-#if __PTHREADS__
+#if USE_TSD && __PTHREADS__
   auto layer = static_cast<neu1_layer *>(pthread_getspecific(sNeu1Key));
   if (layer == nullptr) {
     layer = alloc_layer(fVecLen);
@@ -85,7 +85,7 @@ void CBOWModel::Step(size_t center, const size_t *context, size_t len) {
       syn0[c + lastWord * fVecLen] += neu1e[c];
   }
 
-#if !__PTHREADS__
+#if !USE_TSD
   free(neu1);
   free(neu1e);
 #endif
